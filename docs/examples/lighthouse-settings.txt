@@ -1,0 +1,6 @@
+frames=70
+prompt=a lighthouse on a rocky island, stormy teal ocean, golden beacon, dramatic clouds, cinematic detailed painting
+style=Cinematic
+creativity=0.90
+seed=42
+Android 15 x86_64 emulator; CPU inference; airplane mode

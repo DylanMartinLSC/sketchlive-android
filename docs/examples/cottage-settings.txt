@@ -1,0 +1,6 @@
+frames=68
+prompt=a magical red mushroom cottage, glowing windows, mossy forest, fireflies, cinematic fantasy art
+style=Cinematic
+creativity=0.90
+seed=42
+Android 15 x86_64 emulator; CPU inference; airplane mode

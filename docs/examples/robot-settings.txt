@@ -1,0 +1,6 @@
+frames=74
+prompt=a small friendly orange robot standing, two glowing cyan eyes, rounded metal body, detailed 3d render, studio lighting
+style=3D render
+creativity=0.85
+seed=7
+Android 15 x86_64 emulator; CPU inference; airplane mode
