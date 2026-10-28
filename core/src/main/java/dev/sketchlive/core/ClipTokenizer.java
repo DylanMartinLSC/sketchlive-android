@@ -11,6 +11,7 @@ import java.util.regex.*;
 /** OpenAI CLIP byte-level BPE. SD2 uses BOS 49406, EOS 49407 and PAD 0. */
 public final class ClipTokenizer {
   private final Map<String, Integer> vocab;
+  private final int padToken;
   private final Map<String, Integer> ranks = new HashMap<>();
   private final String[] bytes = new String[256];
   private final Map<String, List<String>> cache = new HashMap<>();
@@ -18,8 +19,17 @@ public final class ClipTokenizer {
       Pattern.compile(
           "<\\|startoftext\\|>|<\\|endoftext\\|>|!|'s|'t|'re|'ve|'m|'ll|'d|[\\p{L}]+|[\\p{N}]|[^\\s\\p{L}\\p{N}!]+",
           Pattern.CASE_INSENSITIVE);
+  private static final Pattern SD1_TOKENS =
+      Pattern.compile(
+          "<\\|startoftext\\|>|<\\|endoftext\\|>|'s|'t|'re|'ve|'m|'ll|'d|[\\p{L}]+|[\\p{N}]|[^\\s\\p{L}\\p{N}]+",
+          Pattern.CASE_INSENSITIVE);
 
   public ClipTokenizer(Reader vocabulary, Reader merges) throws IOException {
+    this(vocabulary, merges, 0);
+  }
+
+  public ClipTokenizer(Reader vocabulary, Reader merges, int padToken) throws IOException {
+    this.padToken = padToken;
     vocab = new Gson().fromJson(vocabulary, new TypeToken<Map<String, Integer>>() {}.getType());
     List<Integer> values = new ArrayList<>();
     for (int i = 33; i <= 126; i++) values.add(i);
@@ -80,13 +90,14 @@ public final class ClipTokenizer {
             .trim()
             .toLowerCase(Locale.ROOT);
     long[] ids = new long[77];
+    Arrays.fill(ids, padToken);
     ids[0] = 49406;
     int pos = 1;
-    Matcher matcher = TOKENS.matcher(text);
+    Matcher matcher = (padToken == 0 ? TOKENS : SD1_TOKENS).matcher(text);
     outer:
     while (matcher.find()) {
       String token = matcher.group();
-      if (token.equals("!")) {
+      if (padToken == 0 && token.equals("!")) {
         ids[pos++] = 0;
         if (pos == 76) break;
         continue;

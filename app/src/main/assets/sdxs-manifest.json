@@ -1,0 +1,86 @@
+{
+  "id": "sdxs-sketch-256-v1",
+  "schema": 1,
+  "revision": "a57406c68aeea05a731bb217cb9d9dd3bdc47b3bac624c02303f1d4f4f6d391c",
+  "base_url": "https://github.com/DylanMartinLSC/sketchlive-android/releases/download/sdxs-sketch-v1/",
+  "source_model": "IDKiro/sdxs-512-dreamshaper",
+  "source_revision": "76f720262bb051da75666b22c902a78c8e16c763",
+  "control_model": "IDKiro/sdxs-512-dreamshaper-sketch",
+  "control_revision": "cd341678087336ed72c05660ac84d765896b48e7",
+  "resolutions": [
+    256
+  ],
+  "context_width": 768,
+  "pad_token": 49407,
+  "timestep": 999,
+  "sigma": 14.614646911621094,
+  "conditioning": "white sketch lines on black, RGB [0,1]",
+  "note": "One-step SDXS with fused Sketch ControlNet, FP16 weights / FP32 float I/O. Modified by ONNX conversion; no training. Model weights retain upstream OpenRAIL++ terms.",
+  "files": [
+    {
+      "name": "decoder.data",
+      "size": 2441088,
+      "sha256": "d73caeb7485d734294055ecbe7be3306cb3af3cd87c1d812904508e5ff5db706"
+    },
+    {
+      "name": "decoder_256.onnx",
+      "size": 29157,
+      "sha256": "1563489f208f5472c876298e23dfaf492dc65cfe2c9eb9ec8acf02de76911558"
+    },
+    {
+      "name": "text_encoder.data",
+      "size": 246120960,
+      "sha256": "a12581deaceb51515a1a710a35fef7cfee0ea42556ca3a2881ed0d920c52a8e8"
+    },
+    {
+      "name": "text_encoder.onnx",
+      "size": 123248,
+      "sha256": "fcd2495e5ea001ab345a17bb85975954152018db9e38c6c31fda256a7b429bb2"
+    },
+    {
+      "name": "unet.data",
+      "size": 1004567808,
+      "sha256": "bc0df0b1300d7c30c9b41211240736951f450eacc8e1039f70b37cb61b4bb0a2"
+    },
+    {
+      "name": "unet_256.onnx",
+      "size": 6673208,
+      "sha256": "473083b94260d5ebd8b11cc798a3d15c3a692fe5b7b474e1d7af949f4051f4ef"
+    },
+    {
+      "name": "CLIP-LICENSE.txt",
+      "size": 1064,
+      "sha256": "987e63b32f6c89ff5160e429458a872ff048e6860b590a3912e938f9da8f14db"
+    },
+    {
+      "name": "NOTICE.txt",
+      "size": 1874,
+      "sha256": "893f0f85916cbc84be64e97c4d472a2c0081496521a72c2a818fef4d37c19c30"
+    },
+    {
+      "name": "OPENRAIL-M.txt",
+      "size": 14385,
+      "sha256": "be351ebe7ac01bcdbb018639aadcfd38f136b7dc3f2a3d4d3a24db51d1b210ef"
+    },
+    {
+      "name": "OPENRAIL-PLUS-PLUS.txt",
+      "size": 14109,
+      "sha256": "19b6998b569b53ac1fc2158a8a3202c8699a9a4605b47075715d9c96be7fb6d0"
+    },
+    {
+      "name": "SDXS-MODEL-CARD.md",
+      "size": 2224,
+      "sha256": "6b38a4c76fcdf184abfa6186e913f7badc5468e9d2ff8b16a909a9e8193bec47"
+    },
+    {
+      "name": "SKETCH-MODEL-CARD.md",
+      "size": 1132,
+      "sha256": "f9f2a64ed5ce525318613dbc4e4a33510aa98cb2ec68e0f66a883f6427ec46cf"
+    },
+    {
+      "name": "TAESD-LICENSE.txt",
+      "size": 1073,
+      "sha256": "261497cf8e9ed613ed1fa5ddf48af32cdf50545b2ccd9edd7eacc91fb9255d6e"
+    }
+  ]
+}

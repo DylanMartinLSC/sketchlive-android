@@ -9,5 +9,6 @@ dependencies {
 test {
     maxHeapSize = '10g'
     systemProperty 'modelDir', System.getProperty('modelDir', '')
+    systemProperty 'fastModelDir', System.getProperty('fastModelDir', '')
     systemProperty 'assetsDir', file('../app/src/main/assets').absolutePath
 }

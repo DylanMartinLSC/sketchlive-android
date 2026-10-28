@@ -4,17 +4,22 @@ import json
 from pathlib import Path
 import sys
 import urllib.request
+import argparse
 
 REVISION = "30015d1ff375a67d2ade66f9a43339adf5cd5639"
 BASE = f"https://huggingface.co/xay2001/sd-turbo-android/resolve/{REVISION}/sd-turbo-v1/"
 
 
 def main():
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: python tools/download_models.py MODEL_DIRECTORY")
-    destination = Path(sys.argv[1])
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("destination")
+    parser.add_argument("--mode",choices=["quality","fast"],default="quality")
+    args=parser.parse_args()
+    destination = Path(args.destination)
     destination.mkdir(parents=True, exist_ok=True)
-    manifest = json.loads((Path(__file__).parents[1] / "app/src/main/assets/model-manifest.json").read_text())
+    asset="sdxs-manifest.json" if args.mode=="fast" else "model-manifest.json"
+    manifest = json.loads((Path(__file__).parents[1] / "app/src/main/assets" / asset).read_text())
+    base=manifest.get("base_url",BASE)
     for item in manifest["files"]:
         if "_512" in item["name"]:
             continue
@@ -30,7 +35,7 @@ def main():
         if not verified(target):
             partial = target.with_suffix(target.suffix + ".part")
             print("Downloading", item["name"], flush=True)
-            urllib.request.urlretrieve(BASE + item["name"], partial)
+            urllib.request.urlretrieve(base + item["name"], partial)
             if not verified(partial):
                 raise RuntimeError(f"Checksum mismatch: {partial}")
             partial.replace(target)

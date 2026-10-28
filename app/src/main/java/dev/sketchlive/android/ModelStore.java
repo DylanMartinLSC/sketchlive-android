@@ -2,6 +2,7 @@ package dev.sketchlive.android;
 
 import android.content.Context;
 import com.google.gson.*;
+import dev.sketchlive.core.ModelProfile;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -16,27 +17,41 @@ final class ModelStore {
   static final String BASE =
       "https://huggingface.co/xay2001/sd-turbo-android/resolve/" + REVISION + "/sd-turbo-v1/";
   final File directory;
+  final ModelProfile profile;
+  final String revision, baseUrl;
+  final long downloadBytes;
   private final List<JsonObject> files = new ArrayList<>();
   private volatile boolean cancelled;
   private volatile HttpURLConnection connection;
 
   ModelStore(Context context) throws IOException {
-    directory = new File(context.getNoBackupFilesDir(), "sd-turbo-v1");
+    this(context, ModelProfile.QUALITY);
+  }
+
+  ModelStore(Context context, ModelProfile profile) throws IOException {
+    this.profile = profile;
+    directory = new File(context.getNoBackupFilesDir(), profile.directory);
     if (!directory.exists() && !directory.mkdirs())
       throw new IOException("Cannot create model storage");
     try (Reader reader =
-        new InputStreamReader(
-            context.getAssets().open("model-manifest.json"), StandardCharsets.UTF_8)) {
-      for (JsonElement element :
-          JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("files")) {
+        new InputStreamReader(context.getAssets().open(profile.manifest), StandardCharsets.UTF_8)) {
+      JsonObject manifest = JsonParser.parseReader(reader).getAsJsonObject();
+      revision = manifest.has("revision") ? manifest.get("revision").getAsString() : REVISION;
+      baseUrl = manifest.has("base_url") ? manifest.get("base_url").getAsString() : BASE;
+      long bytes = 0;
+      for (JsonElement element : manifest.getAsJsonArray("files")) {
         JsonObject item = element.getAsJsonObject();
-        if (!item.get("name").getAsString().contains("_512")) files.add(item);
+        if (!item.get("name").getAsString().contains("_512")) {
+          files.add(item);
+          bytes += item.get("size").getAsLong();
+        }
       }
+      downloadBytes = bytes;
     }
   }
 
   boolean ready() {
-    if (!new File(directory, "verified-" + REVISION).exists()) return false;
+    if (!new File(directory, "verified-" + revision).exists()) return false;
     for (JsonObject item : files)
       if (new File(directory, item.get("name").getAsString()).length()
           != item.get("size").getAsLong()) return false;
@@ -77,7 +92,7 @@ final class ModelStore {
         throw new IOException("Cannot reset " + name);
       long offset = partial.length();
       if (offset < size) {
-        HttpURLConnection c = (HttpURLConnection) new URL(BASE + name).openConnection();
+        HttpURLConnection c = (HttpURLConnection) new URL(baseUrl + name).openConnection();
         c.setConnectTimeout(30000);
         c.setReadTimeout(30000);
         c.setRequestProperty("Accept-Encoding", "identity");
@@ -134,8 +149,8 @@ final class ModelStore {
       complete += size;
     }
     check();
-    try (FileOutputStream out = new FileOutputStream(new File(directory, "verified-" + REVISION))) {
-      out.write(REVISION.getBytes(StandardCharsets.UTF_8));
+    try (FileOutputStream out = new FileOutputStream(new File(directory, "verified-" + revision))) {
+      out.write(revision.getBytes(StandardCharsets.UTF_8));
     }
   }
 

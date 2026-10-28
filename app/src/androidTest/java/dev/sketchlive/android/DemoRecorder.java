@@ -117,14 +117,19 @@ public class DemoRecorder {
   public void recordExample() throws Exception {
     String name = InstrumentationRegistry.getArguments().getString("demo", "");
     Assume.assumeTrue("Pass -e demo to record an example", !name.isEmpty());
+    boolean fast =
+        "fast".equals(InstrumentationRegistry.getArguments().getString("mode", "quality"));
+    dev.sketchlive.core.ModelProfile profile =
+        fast ? dev.sketchlive.core.ModelProfile.FAST : dev.sketchlive.core.ModelProfile.QUALITY;
     assertTrue(
-        new ModelStore(InstrumentationRegistry.getInstrumentation().getTargetContext()).ready());
+        new ModelStore(InstrumentationRegistry.getInstrumentation().getTargetContext(), profile)
+            .ready());
     directory =
         new File(
             InstrumentationRegistry.getInstrumentation()
                 .getTargetContext()
                 .getExternalFilesDir(null),
-            "demos/" + name);
+            "demos/" + (fast ? "fast-" : "") + name);
     assertTrue(directory.exists() || directory.mkdirs());
     String prompt;
     switch (name) {
@@ -150,9 +155,11 @@ public class DemoRecorder {
       scenario = activity;
       scenario.onActivity(
           a -> {
+            a.selectProfile(profile);
             ((EditText) field(a, "prompt")).setText(prompt);
             ((EditText) field(a, "seedInput")).setText(name.equals("robot") ? "7" : "42");
-            ((SeekBar) field(a, "creativity")).setProgress(name.equals("robot") ? 65 : 70);
+            ((SeekBar) field(a, "creativity"))
+                .setProgress(fast ? 65 : (name.equals("robot") ? 65 : 70));
             ((Spinner) field(a, "style")).setSelection(name.equals("robot") ? 4 : 1);
             ((Switch) field(a, "live")).setChecked(false);
             SketchView sketch = (SketchView) field(a, "sketch");
@@ -194,27 +201,31 @@ public class DemoRecorder {
             ((Button) field(a, "drawTab")).performClick();
           });
       capture(3);
-      scenario.onActivity(a -> ((Button) field(a, "enhance")).performClick());
-      waitForResult();
-      capture(8);
-      scenario.onActivity(
-          a -> {
-            try {
-              save((Bitmap) field(a, "latest"), "enhanced.png");
-            } catch (Exception e) {
-              throw new AssertionError(e);
-            }
-          });
+      if (!fast) {
+        scenario.onActivity(a -> ((Button) field(a, "enhance")).performClick());
+        waitForResult();
+        capture(8);
+        scenario.onActivity(
+            a -> {
+              try {
+                save((Bitmap) field(a, "latest"), "enhanced.png");
+              } catch (Exception e) {
+                throw new AssertionError(e);
+              }
+            });
+      } else capture(8);
       try (Writer out = new FileWriter(new File(directory, "recording.txt"))) {
         out.write(
             "frames="
                 + frame
                 + "\nprompt="
                 + prompt
+                + "\nmode="
+                + (fast ? "Fast SDXS Sketch" : "Quality SD-Turbo")
                 + "\nstyle="
                 + (name.equals("robot") ? "3D render" : "Cinematic")
                 + "\ncreativity="
-                + (name.equals("robot") ? "0.85" : "0.90")
+                + (fast ? "0.85" : (name.equals("robot") ? "0.85" : "0.90"))
                 + "\nseed="
                 + (name.equals("robot") ? "7" : "42")
                 + "\nAndroid 15 x86_64 emulator; CPU inference; airplane mode\n");

@@ -89,6 +89,7 @@ public class DeviceTest {
     try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
       scenario.onActivity(
           activity -> {
+            activity.selectProfile(dev.sketchlive.core.ModelProfile.QUALITY);
             ((EditText) field(activity, "prompt"))
                 .setText(
                     "a magical red mushroom cottage, glowing windows, mossy forest, cinematic"

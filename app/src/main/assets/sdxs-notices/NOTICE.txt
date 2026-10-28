@@ -1,0 +1,37 @@
+SketchLive Android SDXS Sketch model pack v1
+
+This is a format conversion of existing models, not newly trained weights.
+Changes: static 256 px ONNX graphs, FP16 weights, FP32 float inputs/outputs,
+and a fused SDXS UNet + Sketch ControlNet graph. No training or fine-tuning.
+
+Base: IDKiro/sdxs-512-dreamshaper
+Revision: 76f720262bb051da75666b22c902a78c8e16c763
+https://huggingface.co/IDKiro/sdxs-512-dreamshaper
+
+ControlNet: IDKiro/sdxs-512-dreamshaper-sketch
+Revision: cd341678087336ed72c05660ac84d765896b48e7
+https://huggingface.co/IDKiro/sdxs-512-dreamshaper-sketch
+
+SDXS authors: Yuda Song, Zehao Sun, Xuanwu Yin.
+The model cards declare OpenRAIL++ terms. The accompanying CreativeML Open
+RAIL++-M text is retained from the standard Stability AI license reference.
+The source model cards are included without changes.
+
+The SDXS base derives from Lykon DreamShaper 8 / DreamShaper 8 LCM and TAESD.
+Their upstream terms remain applicable: CreativeML OpenRAIL-M (DreamShaper),
+MIT (TAESD, copyright madebyollin), and MIT (OpenAI CLIP, copyright OpenAI).
+Copies of these license texts accompany this conversion. No additional
+rights to upstream weights are granted by this conversion or the app.
+
+The app source is separately licensed under MIT.
+https://github.com/DylanMartinLSC/sketchlive-android
+
+Pipeline: tokenize with SD1 CLIP (PAD=49407), encode the prompt, build a white
+sketch-on-black control map, sample fixed-seed Gaussian noise at t999,
+perform one Euler denoising step with Sketch ControlNet, decode with TAESD.
+Colored/filled sketches use Sobel edges; monochrome ink on white is inverted.
+Fast mode does not support multiple denoising steps; use Quality for Enhance.
+
+Download all files in manifest.json beside their .data weight files.
+All sizes and SHA-256 checksums are recorded in the manifest.
+Actual phone speed and memory use require hardware testing.

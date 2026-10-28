@@ -29,7 +29,9 @@ public final class MainActivity extends Activity {
   private ImageView result, thumbnail;
   private TextView status, creativityLabel;
   private EditText prompt, seedInput;
-  private Spinner style;
+  private Spinner style, mode;
+  private TextView modeHint, modelDetails;
+  private final EnumMap<ModelProfile, ModelStore> stores = new EnumMap<>(ModelProfile.class);
   private SeekBar creativity;
   private Switch live;
   private Button generate, enhance, download, stop, drawTab, resultTab;
@@ -60,7 +62,19 @@ public final class MainActivity extends Activity {
   public void onCreate(Bundle state) {
     super.onCreate(state);
     try {
-      store = new ModelStore(this);
+      for (ModelProfile profile : ModelProfile.values())
+        stores.put(profile, new ModelStore(this, profile));
+      String savedMode =
+          getPreferences(0)
+              .getString(
+                  "modelMode", stores.get(ModelProfile.QUALITY).ready() ? "QUALITY" : "FAST");
+      ModelProfile selected;
+      try {
+        selected = ModelProfile.valueOf(savedMode);
+      } catch (IllegalArgumentException e) {
+        selected = ModelProfile.QUALITY;
+      }
+      store = stores.get(selected);
     } catch (Exception e) {
       new AlertDialog.Builder(this)
           .setMessage(e.toString())
@@ -176,6 +190,16 @@ public final class MainActivity extends Activity {
     prompt.setBackground(surface(PANEL, 12));
     prompt.setPadding(dp(12), dp(10), dp(12), dp(10));
     root.addView(prompt);
+    mode = new Spinner(this);
+    mode.setAdapter(
+        new ArrayAdapter<>(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            new String[] {ModelProfile.QUALITY.label, ModelProfile.FAST.label}));
+    mode.setSelection(store.profile.ordinal());
+    root.addView(mode);
+    modeHint = text("", 12, MUTED);
+    root.addView(modeHint);
     LinearLayout settings = row();
     style = new Spinner(this);
     ArrayAdapter<String> adapter =
@@ -373,12 +397,8 @@ public final class MainActivity extends Activity {
     historyScroll.addView(historyRow);
     root.addView(historyScroll);
     gap(root, 12);
-    root.addView(
-        text(
-            "384 × 384 · one-step local diffusion\n"
-                + "First generation loads the model. Speed depends on your phone.",
-            12,
-            MUTED));
+    modelDetails = text("", 12, MUTED);
+    root.addView(modelDetails);
     sketch.changed = this::changed;
     prompt.addTextChangedListener(
         new TextWatcher() {
@@ -394,7 +414,11 @@ public final class MainActivity extends Activity {
         new SeekBar.OnSeekBarChangeListener() {
           public void onProgressChanged(SeekBar bar, int value, boolean user) {
             creativityLabel.setText(
-                String.format(Locale.US, "Creativity · %.2f", (value + 20) / 100f));
+                String.format(
+                    Locale.US,
+                    (store.profile == ModelProfile.FAST ? "Sketch guidance" : "Creativity")
+                        + " · %.2f",
+                    (value + 20) / 100f));
             if (user) changed();
           }
 
@@ -423,6 +447,14 @@ public final class MainActivity extends Activity {
           } else if (on) changed();
           else main.removeCallbacks(autoGenerate);
         });
+    mode.setOnItemSelectedListener(
+        new AdapterView.OnItemSelectedListener() {
+          public void onItemSelected(AdapterView<?> a, View v, int position, long id) {
+            selectProfile(ModelProfile.values()[position]);
+          }
+
+          public void onNothingSelected(AdapterView<?> a) {}
+        });
     showResult(false);
   }
 
@@ -443,10 +475,64 @@ public final class MainActivity extends Activity {
     if (live.isChecked() && foreground && !busy) main.postDelayed(autoGenerate, 650);
   }
 
+  private static String formatBytes(long bytes) {
+    return String.format(
+        Locale.US,
+        bytes >= 1_000_000_000L ? "%.2f GB" : "%.0f MB",
+        bytes / (bytes >= 1_000_000_000L ? 1e9 : 1e6));
+  }
+
+  void selectProfile(ModelProfile profile) {
+    if (store.profile == profile) return;
+    if (busy) {
+      mode.setSelection(store.profile.ordinal());
+      return;
+    }
+    getPreferences(0)
+        .edit()
+        .putInt("creativity." + store.profile.name(), creativity.getProgress())
+        .apply();
+    live.setChecked(false);
+    main.removeCallbacks(autoGenerate);
+    worker.execute(this::releaseEngine);
+    store = stores.get(profile);
+    mode.setSelection(profile.ordinal());
+    creativity.setMax(profile == ModelProfile.FAST ? 80 : 75);
+    creativity.setProgress(getPreferences(0).getInt("creativity." + profile.name(), 65));
+    creativityLabel.setText(
+        String.format(
+            Locale.US,
+            (profile == ModelProfile.FAST ? "Sketch guidance" : "Creativity") + " · %.2f",
+            (creativity.getProgress() + 20) / 100f));
+    setStatus(
+        store.ready()
+            ? profile.label + " ready"
+            : "Download the " + profile.label + " model once to use it offline.");
+    revision++;
+    refresh();
+  }
+
   private void refresh() {
     boolean ready = store.ready();
     generate.setEnabled(ready && !busy);
-    enhance.setEnabled(ready && !busy);
+    enhance.setEnabled(ready && !busy && store.profile.supportsEnhance());
+    mode.setEnabled(!busy);
+    download.setText(
+        "Download "
+            + (store.profile == ModelProfile.FAST ? "Fast" : "Quality")
+            + " model · "
+            + formatBytes(store.downloadBytes));
+    modeHint.setText(
+        store.profile == ModelProfile.FAST
+            ? "256 px · SDXS + sketch guidance. Switch to Quality for Enhance."
+            : "384 px · SD-Turbo · color-aware image-to-image; two-step Enhance.");
+    if (modelDetails != null)
+      modelDetails.setText(
+          store.profile.size
+              + " × "
+              + store.profile.size
+              + " · one-step local diffusion\n"
+              + "First generation loads the model. Speed depends on your phone.");
     download.setVisibility(ready ? View.GONE : View.VISIBLE);
     download.setEnabled(!busy);
     stop.setEnabled(busy);
@@ -470,11 +556,16 @@ public final class MainActivity extends Activity {
     new AlertDialog.Builder(this)
         .setTitle("Download the local model")
         .setMessage(
-            "One-time download: 2.42 GB. Allow at least 5 GB of free storage. Wi-Fi is recommended."
-                + " Generation runs only on this phone after setup; no account or paid API.\n\n"
-                + "SD-Turbo weights use Stability AI's license; the app code is MIT. See About for"
-                + " the model license.\n\n"
-                + "Download can be paused and resumed.")
+            "One-time download: "
+                + formatBytes(store.downloadBytes)
+                + ". Allow at least "
+                + formatBytes(store.downloadBytes * 2 + 128_000_000L)
+                + " free storage. Wi-Fi is recommended. Generation runs only on this phone after"
+                + " setup; no account or paid API.\n\n"
+                + (store.profile == ModelProfile.FAST
+                    ? "SDXS and its Sketch ControlNet retain their upstream OpenRAIL++ terms."
+                    : "SD-Turbo weights use Stability AI's license.")
+                + " The app code is MIT.\n\nDownload can be paused and resumed.")
         .setNegativeButton("Later", null)
         .setNeutralButton(
             "Model license",
@@ -483,13 +574,16 @@ public final class MainActivity extends Activity {
                     new Intent(
                         Intent.ACTION_VIEW,
                         Uri.parse(
-                            "https://huggingface.co/stabilityai/sd-turbo/blob/main/LICENSE"))))
+                            store.profile == ModelProfile.FAST
+                                ? "https://huggingface.co/IDKiro/sdxs-512-dreamshaper-sketch"
+                                : "https://huggingface.co/stabilityai/sd-turbo/blob/main/LICENSE"))))
         .setPositiveButton("Download", (d, w) -> download())
         .show();
   }
 
   private void download() {
-    if (store.directory.getUsableSpace() < Math.max(100_000_000L, 2_500_000_000L - partialSize())) {
+    if (store.directory.getUsableSpace()
+        < Math.max(100_000_000L, store.downloadBytes + 128_000_000L - partialSize())) {
       toast("Free more storage before downloading");
       return;
     }
@@ -533,6 +627,12 @@ public final class MainActivity extends Activity {
   private void generate(boolean enhanced, boolean automatic) {
     main.removeCallbacks(autoGenerate);
     if (busy || !foreground || !store.ready()) return;
+    if (enhanced && !store.profile.supportsEnhance()) {
+      toast("Switch to Quality for Enhance");
+      return;
+    }
+    final ModelStore selectedStore = store;
+    final ModelProfile profile = selectedStore.profile;
     String description = prompt.getText().toString().trim();
     if (description.isEmpty()) {
       if (!automatic) toast("Describe what you want to draw");
@@ -566,23 +666,27 @@ public final class MainActivity extends Activity {
             if (engine == null) {
               try (Reader v =
                       new InputStreamReader(
-                          getAssets().open("vocab.json"), StandardCharsets.UTF_8);
+                          getAssets().open(profile.tokenizerPrefix + "vocab.json"),
+                          StandardCharsets.UTF_8);
                   Reader m =
                       new InputStreamReader(
-                          getAssets().open("merges.txt"), StandardCharsets.UTF_8)) {
+                          getAssets().open(profile.tokenizerPrefix + "merges.txt"),
+                          StandardCharsets.UTF_8)) {
                 engine =
                     new DiffusionEngine(
-                        store.directory,
-                        new ClipTokenizer(v, m),
-                        Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1)));
+                        selectedStore.directory,
+                        new ClipTokenizer(v, m, profile.padToken),
+                        Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1)),
+                        profile);
               }
             }
-            float[] rgb = toPlanar(input);
+            float[] rgb = toPlanar(input, profile.size);
             input.recycle();
             if (stopRequested) throw new CancellationException();
             output =
                 fromPlanar(
-                    engine.generate(rgb, fullPrompt, amount, usedSeed, enhanced, this::postStatus));
+                    engine.generate(rgb, fullPrompt, amount, usedSeed, enhanced, this::postStatus),
+                    profile.size);
             if (stopRequested) {
               output.recycle();
               output = null;
@@ -653,10 +757,10 @@ public final class MainActivity extends Activity {
     engine = null;
   }
 
-  private float[] toPlanar(Bitmap source) {
-    Bitmap small = Bitmap.createScaledBitmap(source, 384, 384, true);
-    int[] pixels = new int[384 * 384];
-    small.getPixels(pixels, 0, 384, 0, 0, 384, 384);
+  private float[] toPlanar(Bitmap source, int size) {
+    Bitmap small = Bitmap.createScaledBitmap(source, size, size, true);
+    int[] pixels = new int[size * size];
+    small.getPixels(pixels, 0, size, 0, 0, size, size);
     if (small != source) small.recycle();
     float[] out = new float[pixels.length * 3];
     for (int i = 0; i < pixels.length; i++) {
@@ -667,12 +771,12 @@ public final class MainActivity extends Activity {
     return out;
   }
 
-  private Bitmap fromPlanar(float[] rgb) {
-    int n = 384 * 384;
+  private Bitmap fromPlanar(float[] rgb, int size) {
+    int n = size * size;
     int[] pixels = new int[n];
     for (int i = 0; i < n; i++)
       pixels[i] = Color.rgb(channel(rgb[i]), channel(rgb[i + n]), channel(rgb[i + 2 * n]));
-    return Bitmap.createBitmap(pixels, 384, 384, Bitmap.Config.ARGB_8888);
+    return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888);
   }
 
   private int channel(float v) {
@@ -791,22 +895,68 @@ public final class MainActivity extends Activity {
         .setTitle("SketchLive · local Android")
         .setMessage(
             "Free, open-source sketch-to-image. No account, subscription, server, or image uploads."
-                + " Internet is used only to download model files from Hugging Face.\n\n"
-                + "Android 10+, 64-bit, 8 GB RAM recommended. One-step previews at 384 px; Enhance"
-                + " uses two steps with the tiny decoder. Android results and speed vary by"
-                + " device.\n\n"
-                + "App: MIT. ONNX Runtime: MIT. Gson: Apache 2.0. TAESD: MIT. SD-Turbo weights:"
-                + " Stability AI terms. Conversion by xay2001/sd-turbo-android.\n\n"
-                + "Model storage: 2.42 GB in app-private storage. Uninstalling removes it. Sketch"
-                + " and latest result are restored when you reopen the app.")
+                + " Internet is used only to download model files from Hugging Face or GitHub.\n\n"
+                + "Android 10+, 64-bit, 8 GB RAM recommended. One-step previews at 384 px in"
+                + " Quality or 256 px with SDXS Sketch in Fast; Enhance uses two steps with the"
+                + " tiny decoder. Android results and speed vary by device.\n\n"
+                + "App: MIT. ONNX Runtime: MIT. Gson: Apache 2.0. TAESD and CLIP: MIT. Quality:"
+                + " SD-Turbo, Stability AI terms, conversion by xay2001. Fast: SDXS DreamShaper +"
+                + " Sketch ControlNet, OpenRAIL++ and upstream DreamShaper terms. Copies accompany"
+                + " the Fast model and APK.\n\n"
+                + "Model storage is app-private. Each mode downloads its own model pack."
+                + " Uninstalling removes it. Sketch and latest result are restored when you reopen"
+                + " the app.")
         .setPositiveButton("OK", null)
-        .setNeutralButton(
-            "Model card",
-            (d, w) ->
+        .setNeutralButton("Model licenses", (d, w) -> showModelLicenses())
+        .show();
+  }
+
+  private void showModelLicenses() {
+    String[] labels = {
+      "SDXS · OpenRAIL++",
+      "DreamShaper · OpenRAIL-M",
+      "TAESD · MIT",
+      "CLIP · MIT",
+      "Model source cards"
+    };
+    String[] files = {
+      "OPENRAIL-PLUS-PLUS.txt", "OPENRAIL-M.txt", "TAESD-LICENSE.txt", "CLIP-LICENSE.txt"
+    };
+    new AlertDialog.Builder(this)
+        .setTitle("Model licenses")
+        .setItems(
+            labels,
+            (dialog, which) -> {
+              if (which == 4) {
                 startActivity(
                     new Intent(
                         Intent.ACTION_VIEW,
-                        Uri.parse("https://huggingface.co/xay2001/sd-turbo-android"))))
+                        Uri.parse(
+                            store.profile == ModelProfile.FAST
+                                ? "https://huggingface.co/IDKiro/sdxs-512-dreamshaper-sketch"
+                                : "https://huggingface.co/xay2001/sd-turbo-android")));
+                return;
+              }
+              try (Reader reader =
+                  new InputStreamReader(
+                      getAssets().open("sdxs-notices/" + files[which]), StandardCharsets.UTF_8)) {
+                StringBuilder text = new StringBuilder();
+                char[] buffer = new char[4096];
+                int count;
+                while ((count = reader.read(buffer)) != -1) text.append(buffer, 0, count);
+                ScrollView scroll = new ScrollView(this);
+                TextView body = text(text.toString(), 13, TEXT);
+                body.setPadding(dp(16), dp(12), dp(16), dp(12));
+                scroll.addView(body);
+                new AlertDialog.Builder(this)
+                    .setTitle(labels[which])
+                    .setView(scroll)
+                    .setPositiveButton("Close", null)
+                    .show();
+              } catch (IOException e) {
+                toast("Could not read license");
+              }
+            })
         .show();
   }
 
@@ -816,7 +966,15 @@ public final class MainActivity extends Activity {
         prefs.getString(
             "prompt", "a magical red mushroom cottage, glowing windows, mossy forest, fireflies"));
     seedInput.setText(prefs.getString("seed", "42"));
-    creativity.setProgress(prefs.getInt("creativity", 65));
+    creativity.setMax(store.profile == ModelProfile.FAST ? 80 : 75);
+    creativity.setProgress(
+        prefs.getInt("creativity." + store.profile.name(), prefs.getInt("creativity", 65)));
+    creativityLabel.setText(
+        String.format(
+            Locale.US,
+            (store.profile == ModelProfile.FAST ? "Sketch guidance" : "Creativity") + " · %.2f",
+            (creativity.getProgress() + 20) / 100f));
+    mode.setSelection(store.profile.ordinal());
     String saved = prefs.getString("style", "Cinematic");
     for (int i = 0; i < styles.length; i++) if (styles[i].equals(saved)) style.setSelection(i);
     sketch.restore(new File(getFilesDir(), "sketch.png"));
@@ -852,7 +1010,8 @@ public final class MainActivity extends Activity {
         .edit()
         .putString("prompt", prompt.getText().toString())
         .putString("seed", seedInput.getText().toString())
-        .putInt("creativity", creativity.getProgress())
+        .putInt("creativity." + store.profile.name(), creativity.getProgress())
+        .putString("modelMode", store.profile.name())
         .putString("style", currentStyle)
         .apply();
     Bitmap copy = sketch.snapshot();

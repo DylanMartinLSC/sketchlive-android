@@ -12,6 +12,7 @@ public final class DiffusionEngine implements AutoCloseable {
   public static final int SIZE = 384;
   private final OrtEnvironment env = OrtEnvironment.getEnvironment();
   private final File directory;
+  public final ModelProfile profile;
   private final ClipTokenizer tokenizer;
   private OrtSession unet, encoder, decoder;
   private String cachedPrompt;
@@ -21,6 +22,12 @@ public final class DiffusionEngine implements AutoCloseable {
   private final int threads;
 
   public DiffusionEngine(File directory, ClipTokenizer tokenizer, int threads) {
+    this(directory, tokenizer, threads, ModelProfile.QUALITY);
+  }
+
+  public DiffusionEngine(
+      File directory, ClipTokenizer tokenizer, int threads, ModelProfile profile) {
+    this.profile = profile;
     this.directory = directory;
     this.tokenizer = tokenizer;
     this.threads = Math.max(1, threads);
@@ -85,8 +92,11 @@ public final class DiffusionEngine implements AutoCloseable {
       Consumer<String> progress)
       throws OrtException {
     check();
-    if (image.length != 3 * SIZE * SIZE)
-      throw new IllegalArgumentException("Expected 384px planar RGB");
+    int size = profile.size, latentSize = size / 8;
+    if (image.length != 3 * size * size)
+      throw new IllegalArgumentException("Expected " + size + "px planar RGB");
+    if (enhanced && !profile.supportsEnhance())
+      throw new IllegalArgumentException("SDXS is a one-step model; switch to Quality for Enhance");
     if (!prompt.equals(cachedPrompt)) {
       progress.accept("Reading your prompt…");
       // Free the largest session before opening CLIP: lowers peak memory on phones.
@@ -103,32 +113,52 @@ public final class DiffusionEngine implements AutoCloseable {
       }
     }
     check();
-    progress.accept("Encoding your sketch…");
-    if (encoder == null) encoder = open("encoder_384.onnx");
     float[] latent;
-    try (OnnxTensor input = tensor(image, 1, 3, SIZE, SIZE)) {
-      latent = run(encoder, Collections.singletonMap("image", input));
+    float[] condition = null;
+    if (profile == ModelProfile.FAST) {
+      progress.accept("Reading your sketch outlines…");
+      condition = SketchCondition.create(image, size);
+      latent = new float[4 * latentSize * latentSize];
+    } else {
+      progress.accept("Encoding your sketch…");
+      if (encoder == null) encoder = open("encoder_" + size + ".onnx");
+      try (OnnxTensor input = tensor(image, 1, 3, size, size)) {
+        latent = run(encoder, Collections.singletonMap("image", input));
+      }
     }
-    int t = Math.min(949, Math.max(199, Math.round(creativity * 1000) - 1));
+    int t =
+        profile == ModelProfile.FAST
+            ? 999
+            : Math.min(949, Math.max(199, Math.round(creativity * 1000) - 1));
     float initialSigma = DiffusionMath.sigma(t);
     float[] noisy = DiffusionMath.addNoise(latent, initialSigma, seed);
     check();
     progress.accept("Loading the drawing model…");
-    if (unet == null) unet = open("unet_384.onnx");
+    if (unet == null) unet = open("unet_" + size + ".onnx");
     int steps = enhanced ? 2 : 1;
-    try (OnnxTensor context = tensor(embedding, 1, 77, 1024)) {
+    try (OnnxTensor context = tensor(embedding, 1, 77, profile.contextWidth);
+        OnnxTensor edges = condition == null ? null : tensor(condition, 1, 3, size, size);
+        OnnxTensor controlScale =
+            condition == null
+                ? null
+                : tensor(new float[] {Math.max(0, Math.min(1, creativity))}, 1)) {
       for (int step = 0; step < steps; step++) {
         check();
         progress.accept("Painting on this device · step " + (step + 1) + "/" + steps);
         int current = step == 0 ? t : Math.max(1, Math.round(t * .5f));
         float sigma = DiffusionMath.sigma(current);
         float next = step + 1 < steps ? DiffusionMath.sigma(Math.max(1, Math.round(t * .5f))) : 0;
-        try (OnnxTensor sample = tensor(DiffusionMath.scale(noisy, sigma), 1, 4, 48, 48);
+        try (OnnxTensor sample =
+                tensor(DiffusionMath.scale(noisy, sigma), 1, 4, latentSize, latentSize);
             OnnxTensor timestep = tensor(new float[] {current}, 1)) {
           Map<String, OnnxTensor> inputs = new HashMap<>();
           inputs.put("sample", sample);
           inputs.put("timestep", timestep);
           inputs.put("encoder_hidden_states", context);
+          if (edges != null) {
+            inputs.put("control_image", edges);
+            inputs.put("control_scale", controlScale);
+          }
           float[] noise = run(unet, inputs);
           DiffusionMath.eulerStep(noisy, noise, next - sigma);
         }
@@ -136,8 +166,8 @@ public final class DiffusionEngine implements AutoCloseable {
     }
     check();
     progress.accept("Finishing your image…");
-    if (decoder == null) decoder = open("decoder_384.onnx");
-    try (OnnxTensor input = tensor(noisy, 1, 4, 48, 48)) {
+    if (decoder == null) decoder = open("decoder_" + size + ".onnx");
+    try (OnnxTensor input = tensor(noisy, 1, 4, latentSize, latentSize)) {
       float[] out = run(decoder, Collections.singletonMap("latent", input));
       check();
       return out;
