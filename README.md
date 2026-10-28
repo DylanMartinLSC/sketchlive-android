@@ -4,11 +4,39 @@
 
 Free, open-source sketch-to-image diffusion that runs locally on Android. No desktop server, account, subscription, paid API, or image uploads. Download the model once, then generate in airplane mode.
 
-[**Download the APK**](https://github.com/DylanMartinLSC/sketchlive-android/releases/tag/v0.1.0) · [Build it yourself](#build) · [Desktop project](https://github.com/DylanMartinLSC/sketchlive-krea-alternative)
+[**Download the APK**](https://github.com/DylanMartinLSC/sketchlive-android/releases/tag/v0.2.0) · [Build it yourself](#build) · [Desktop project](https://github.com/DylanMartinLSC/sketchlive-krea-alternative)
 
-Android 10+ · 64-bit · 8 GB RAM recommended · 384 × 384 output · one-time ~2.42 GB model download
+Android 10+ · 64-bit · 8 GB RAM recommended · Fast 256 px / Quality 384 px · fully offline after setup
 
-## From rough shapes to finished scenes
+## Fast mode: SDXS with sketch guidance
+
+Select **Fast · SDXS Sketch** for a smaller model pack and 256 × 256 one-step generation. Plain SDXS produced usable images but followed the prompt much more than the drawing, so Fast uses its dedicated **Sketch ControlNet** to preserve the shapes.
+
+![Real Android Fast-mode results: a mushroom cottage, friendly robot, and stormy lighthouse following their input sketches](docs/fast-mode.gif)
+
+| | Fast | Quality |
+|---|---|---|
+| Model | SDXS DreamShaper + Sketch ControlNet | SD-Turbo |
+| Output | 256 × 256 | 384 × 384 |
+| One-time download | ~1.26 GB | ~2.42 GB |
+| Sketch input | Outlines; colors come mainly from the prompt | Full color image-to-image |
+| Slider | Sketch guidance: higher follows outlines more strongly | Creativity: higher permits more invention |
+| Denoising | Exactly one step | One step, or two with Enhance |
+
+Each mode downloads independently. Existing Quality downloads are reused after upgrading. The app keeps one inference engine loaded at a time. Fast mode has no two-step Enhance; switch to Quality when you want it.
+
+In one **Android 15 x86_64 emulator** run, warm generation took **0.8 s Fast versus 4.3 s Quality** using each mode's settings. This is a single desktop-hosted emulator measurement, **not Galaxy/Pixel FPS or a model-only comparison**. [Results, settings, and limitations](docs/fast-mode.md)
+
+<details>
+<summary>Watch Fast mode in the Android app</summary>
+
+<p><img src="docs/fast-android-walkthrough.gif" width="360" alt="Actual Android Fast-mode recording: drawing and generating a mushroom cottage with SDXS Sketch" /></p>
+
+Real emulator screenshots, offline generation. Playback is condensed, not a speed benchmark.
+
+</details>
+
+## Quality mode examples
 
 ### Mushroom cottage
 
@@ -44,8 +72,8 @@ Actual emulator screenshots: drawing → Generate → Result → Enhance. Playba
 ## Install and use
 
 1. Install the SketchLive APK on a **64-bit Android 10 or newer** phone. Allow installation from your browser or file manager when Android asks. This is a development preview, not a Play Store release.
-2. Open the app and tap **Download model**. The one-time HTTPS download is about **2.42 GB**. Use Wi-Fi and allow at least **5 GB free storage**. Downloaded files are pinned to an exact revision and verified with SHA-256. Stop pauses the download; Download resumes it.
-3. Enter a prompt, choose a style, and draw with your finger or stylus. Use **Generate** for a one-step preview or **Enhance** for two denoising steps. Tap Sketch/Result to switch views; the latest-result thumbnail stays below the drawing tools.
+2. Choose **Fast** or **Quality** and tap **Download model**. Fast downloads ~**1.26 GB**; Quality downloads ~**2.42 GB**. Use Wi-Fi; allow roughly 3 GB free for Fast or 5 GB for Quality. Files are pinned and verified with SHA-256. Stop pauses the download; Download resumes it.
+3. Enter a prompt, choose a style, and draw with your finger or stylus. Use **Generate** for a one-step preview in either mode, or **Enhance** for two denoising steps in Quality mode. Tap Sketch/Result to switch views; the latest-result thumbnail stays below the drawing tools.
 4. Enable **Live** to generate after a short pause following each stroke. While inference runs, keep drawing: the next generation uses the newest sketch. Turn off Live or tap Stop to stop automatic work.
 5. Save PNG exports to **Pictures/SketchLive**, or share them through Android's share sheet. Import an image through Android's file picker, or use a result as the next sketch.
 
@@ -53,10 +81,10 @@ After setup, generation works in airplane mode. The app never sends sketches, pr
 
 ## What to expect
 
-- **384 × 384 output**, SD-Turbo + the tiny TAESD encoder/decoder. Live uses one denoising step; Enhance uses two, still with TAESD. It does not use the desktop app's full-VAE enhancement.
-- **8 GB RAM or more recommended.** The app uses CPU inference for broad compatibility, not a device-specific NPU SDK. The FP16 weight files are about 2.42 GB; inference also needs working memory. Low-memory phones may be unable to run the model.
+- **Fast: 256 × 256. Quality: 384 × 384.** Both decode with tiny TAESD. Quality encodes the color sketch; Fast conditions on sketch outlines. Enhance is available only in Quality and still uses TAESD, rather than the desktop app's full VAE.
+- **8 GB RAM or more recommended.** The app uses CPU inference for broad compatibility, not a device-specific NPU SDK. The FP16 model packs are about 1.26 GB (Fast) or 2.42 GB (Quality); inference also needs working memory. Low-memory phones may be unable to run the model.
 - **Live means asynchronous updates, not a promised frame rate.** First inference loads the model. Subsequent generations reuse the diffusion session. Speed, heat, and battery use depend on the device; this is not the desktop RTX 3090 experience.
-- Creativity controls the actual diffusion noise level, not an image filter. Lower values follow the sketch more closely; higher values allow more invention. Fixed seeds stabilize results on the same runtime. Java and Python use different Gaussian RNGs, so the same numerical seed does not reproduce desktop pixels.
+- In Quality, Creativity controls the actual diffusion noise level: lower values follow the sketch more closely; higher values allow more invention. In Fast, Sketch guidance controls the ControlNet conditioning strength: higher values follow outlines more strongly. Neither is an image filter. Fixed seeds stabilize results on the same runtime. Java and Python use different Gaussian RNGs, so the same numerical seed does not reproduce desktop pixels.
 - Brush, stylus pressure, eraser, size, palette, fill, clear, undo/redo, image import, style presets, seed/reroll, live preview, Stop, Enhance, result reuse, PNG save/share, and an in-session history strip are included.
 - The sketch, latest result, and settings are restored after reopening. Up to eight recent results are kept in memory during a session. Export anything you want to keep permanently. Leaving the app cancels generation to avoid unintended background compute. Downloads continue while the process is alive, but are not a background service; interrupted downloads can be resumed.
 - Models and private drafts are removed when the app is uninstalled. No analytics or ads are included.
@@ -81,20 +109,22 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`. The preview is signed with the
 The optional integration test runs the **same Java inference code** used on Android against the real models. It writes the input, preview, and enhanced result to `core/build/reports/` for inspection. It requires enough host RAM for CPU inference.
 
 ```sh
-python tools/download_models.py /path/to/models
-./gradlew :core:test -DmodelDir=/path/to/models --rerun-tasks
+python tools/download_models.py /path/to/quality-models
+python tools/download_models.py /path/to/fast-models --mode fast
+./gradlew :core:test -DmodelDir=/path/to/quality-models -DfastModelDir=/path/to/fast-models --rerun-tasks
 ```
 
-Without `modelDir`, tokenizer/scheduler tests run and the real-model integration test is explicitly skipped. A successful JVM integration test is not an Android hardware performance benchmark.
+Without the corresponding `modelDir` / `fastModelDir`, unit tests run and real-model integration tests are explicitly skipped. A successful JVM integration test is not an Android hardware performance benchmark.
 
 ### Validation for this preview
 
 - APK build and Android lint completed successfully.
-- JVM tests checked CLIP token IDs against the upstream tokenizer (including accented text/emoji), scheduler sigma values against the pinned manifest, fixed-seed noise, real-model preview, real-model two-step enhancement, and cancellation.
+- Six JVM tests passed with both real model packs: SD1/SD2 tokenization and padding, scheduler math, sketch preprocessing, deterministic Fast inference, input-dependent conditioning, Quality preview/Enhance, and rejection of unsupported Fast enhancement.
 - Android 15 x86_64 emulator tests exercised a resumed HTTPS model download and SHA-256 verification, drawing/fill/undo/redo, actual image generation through the Activity with airplane mode enabled and Wi-Fi disabled, Sketch/Result switching, and successful PNG export to MediaStore.
+- Fast-mode Android tests also passed independent mode switching, one-step inference, Stop/restart, guidance persistence, and resumed GitHub model download/checksum verification. All three Fast gallery examples were generated through the actual Android Activity in airplane mode.
 - ARM64 native libraries are included in the APK. **Physical ARM Android phone speed, memory use, and thermal behavior have not been measured.** The emulator runs on a desktop CPU and does not predict phone frame rates.
 
-The optional Android integration tests in `app/src/androidTest` expect the verified 384 px model pack in the test app's `no_backup/sd-turbo-v1` directory and the integration input at `files/fixture.png`. A verified pack has the `verified-30015d1ff375a67d2ade66f9a43339adf5cd5639` marker written by the downloader. Tests requiring models explicitly skip when setup is incomplete. Run the network download test online; run offline generation in airplane mode after setup. Gradle's connected-test cleanup may uninstall the target and remove its private models, so developers testing multiple stages should install the test APK and use `adb shell am instrument` directly to preserve setup.
+The optional Android integration tests in `app/src/androidTest` expect the verified 384 px model pack in the test app's `no_backup/sd-turbo-v1` directory and the integration input at `files/fixture.png`. A verified pack has the `verified-30015d1ff375a67d2ade66f9a43339adf5cd5639` marker written by the downloader. Fast tests additionally expect the verified pack in `no_backup/sdxs-v1` and `files/fixture-robot.png`; the marker revision comes from `app/src/main/assets/sdxs-manifest.json`. Tests requiring models explicitly skip when setup is incomplete. Run the network download test online; run offline generation in airplane mode after setup. Gradle's connected-test cleanup may uninstall the target and remove its private models, so developers testing multiple stages should install the test APK and use `adb shell am instrument` directly to preserve setup.
 
 ## Model provenance and licenses
 
@@ -103,3 +133,7 @@ App source: [MIT](LICENSE). ONNX Runtime: [MIT](https://github.com/microsoft/onn
 The pinned Android conversion is [`xay2001/sd-turbo-android`](https://huggingface.co/xay2001/sd-turbo-android), revision `30015d1ff375a67d2ade66f9a43339adf5cd5639`, folder `sd-turbo-v1`. Its manifest records exact lengths and SHA-256 hashes. Only the 384 px graphs and their shared weight files are downloaded. The CLIP vocabulary/merges come from SD-Turbo revision `b261bac6fd2cf515557d5d0707481eafa0485ec2`; token IDs use SD2's PAD=0 convention.
 
 The app deliberately does not bundle or redistribute model weights inside its APK. Setup links to the upstream model license before download.
+
+Fast uses [`IDKiro/sdxs-512-dreamshaper`](https://huggingface.co/IDKiro/sdxs-512-dreamshaper), revision `76f720262bb051da75666b22c902a78c8e16c763`, with [`IDKiro/sdxs-512-dreamshaper-sketch`](https://huggingface.co/IDKiro/sdxs-512-dreamshaper-sketch), revision `cd341678087336ed72c05660ac84d765896b48e7`. These declare OpenRAIL++ terms; upstream DreamShaper, TAESD, and CLIP terms remain applicable. This app's conversion changes format/precision and fuses the drawing graph; it does not train a new model. Source cards, notices, and license texts accompany both the APK and downloaded Fast pack. Model licenses can be read offline in About.
+
+The [Fast model pack](https://github.com/DylanMartinLSC/sketchlive-android/releases/tag/sdxs-sketch-v1) has SHA-256-pinned files. `tools/export_sdxs.py` documents the 256 px export; it requires PyTorch, Diffusers, Transformers, Accelerate, ONNX, and a CUDA GPU. The Fast tokenizer uses SD1 PAD=49407 and 768-wide text embeddings; Quality uses SD2 PAD=0 and 1024-wide embeddings. They are not interchangeable.

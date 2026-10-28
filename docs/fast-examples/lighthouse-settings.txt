@@ -1,0 +1,7 @@
+frames=38
+prompt=a lighthouse on a rocky island, stormy teal ocean, golden beacon, dramatic clouds, cinematic detailed painting
+mode=Fast SDXS Sketch
+style=Cinematic
+sketch_guidance=0.85
+seed=42
+Android 15 x86_64 emulator; CPU inference; airplane mode

@@ -1,0 +1,7 @@
+frames=38
+prompt=a magical red mushroom cottage, glowing windows, mossy forest, fireflies, cinematic fantasy art
+mode=Fast SDXS Sketch
+style=Cinematic
+sketch_guidance=0.85
+seed=42
+Android 15 x86_64 emulator; CPU inference; airplane mode

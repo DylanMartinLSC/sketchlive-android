@@ -1,0 +1,5 @@
+Android 15 x86_64 emulator, desktop host CPU; not phone FPS
+FAST_COLD: Ready · 2.1 s · generated on this phone
+FAST_WARM: Ready · 0.8 s · generated on this phone
+QUALITY_COLD: Ready · 15.7 s · generated on this phone
+QUALITY_WARM: Ready · 4.3 s · generated on this phone

@@ -113,9 +113,13 @@ public class FastModeDeviceTest {
       timings.append("QUALITY_WARM: ").append(qualityWarm).append('\n');
       scenario.onActivity(
           a -> {
+            ((SeekBar) field(a, "creativity")).setProgress(45);
             a.selectProfile(ModelProfile.FAST);
             assertFalse(((Button) field(a, "enhance")).isEnabled());
             assertEquals(65, ((SeekBar) field(a, "creativity")).getProgress());
+            a.selectProfile(ModelProfile.QUALITY);
+            assertEquals(45, ((SeekBar) field(a, "creativity")).getProgress());
+            a.selectProfile(ModelProfile.FAST);
           });
     }
     try (Writer out = new FileWriter(new File(report, "timings.txt"))) {

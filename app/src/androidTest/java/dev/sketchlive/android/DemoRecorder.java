@@ -224,7 +224,7 @@ public class DemoRecorder {
                 + (fast ? "Fast SDXS Sketch" : "Quality SD-Turbo")
                 + "\nstyle="
                 + (name.equals("robot") ? "3D render" : "Cinematic")
-                + "\ncreativity="
+                + (fast ? "\nsketch_guidance=" : "\ncreativity=")
                 + (fast ? "0.85" : (name.equals("robot") ? "0.85" : "0.90"))
                 + "\nseed="
                 + (name.equals("robot") ? "7" : "42")

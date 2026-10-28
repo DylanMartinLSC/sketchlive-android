@@ -29,7 +29,16 @@ public class DeviceTest {
   @Test
   public void downloadResumesAndVerifiesPinnedFile() throws Exception {
     Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-    ModelStore store = new ModelStore(context);
+    resumeDownload(new ModelStore(context));
+  }
+
+  @Test
+  public void fastDownloadResumesAndVerifiesPinnedFile() throws Exception {
+    Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+    resumeDownload(new ModelStore(context, dev.sketchlive.core.ModelProfile.FAST));
+  }
+
+  private void resumeDownload(ModelStore store) throws Exception {
     Assume.assumeTrue(store.ready());
     java.io.File graph = new java.io.File(store.directory, "text_encoder.onnx");
     byte[] original;
@@ -40,7 +49,7 @@ public class DeviceTest {
       while ((n = in.read(buffer)) != -1) bytes.write(buffer, 0, n);
       original = bytes.toByteArray();
     }
-    java.io.File marker = new java.io.File(store.directory, "verified-" + ModelStore.REVISION);
+    java.io.File marker = new java.io.File(store.directory, "verified-" + store.revision);
     assertTrue(marker.delete());
     assertTrue(graph.delete());
     try (java.io.OutputStream out =

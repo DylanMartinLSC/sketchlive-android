@@ -1,0 +1,7 @@
+frames=41
+prompt=a small friendly orange robot standing, two glowing cyan eyes, rounded metal body, detailed 3d render, studio lighting
+mode=Fast SDXS Sketch
+style=3D render
+sketch_guidance=0.85
+seed=7
+Android 15 x86_64 emulator; CPU inference; airplane mode
