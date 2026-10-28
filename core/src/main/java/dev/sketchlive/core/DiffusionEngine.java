@@ -72,6 +72,10 @@ public final class DiffusionEngine implements AutoCloseable {
         float[] out = new float[buffer.remaining()];
         buffer.get(out);
         return out;
+      } catch (OrtException e) {
+        // setTerminate surfaces as ORT_FAIL; report it as the cancellation it is.
+        check();
+        throw e;
       } finally {
         running = null;
       }

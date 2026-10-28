@@ -5,3 +5,4 @@ local.properties
 *.keystore
 *.apk
 *.apk.sha256
+keystore.properties

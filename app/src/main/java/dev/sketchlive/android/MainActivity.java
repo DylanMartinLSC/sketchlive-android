@@ -4,6 +4,7 @@ import android.app.*;
 import android.content.*;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
+import android.net.ConnectivityManager;
 import android.net.Uri;
 import android.os.*;
 import android.provider.MediaStore;
@@ -20,6 +21,8 @@ public final class MainActivity extends Activity {
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
   private final Handler main = new Handler(Looper.getMainLooper());
   private final List<Bitmap> history = new ArrayList<>();
+  private final Map<Bitmap, String> promptFor = new IdentityHashMap<>();
+  private final Set<String> reportedPrompts = new HashSet<>();
   private static final int BG = 0xff10141c,
       PANEL = 0xff1c2330,
       TEXT = 0xffeaf0fa,
@@ -86,6 +89,51 @@ public final class MainActivity extends Activity {
     restore();
     refresh();
     if (!store.ready()) setStatus("Download the free model once, then draw completely offline.");
+    if (!getPreferences(0).getBoolean("acceptedContentRules", false)) welcome();
+    else if (getPreferences(0).contains("inferenceRunning")) explainClosure();
+  }
+
+  private void explainClosure() {
+    getPreferences(0).edit().remove("inferenceRunning").apply();
+    AlertDialog.Builder dialog =
+        new AlertDialog.Builder(this)
+            .setTitle("SketchLive was closed")
+            .setMessage(
+                "Android closed SketchLive while it was generating, most likely because the phone"
+                    + " ran out of memory. Close other apps and try again."
+                    + (store.profile == ModelProfile.QUALITY
+                        ? " Fast mode needs much less memory."
+                        : ""))
+            .setPositiveButton("OK", null);
+    if (store.profile == ModelProfile.QUALITY)
+      dialog.setNeutralButton("Use Fast", (d, w) -> selectProfile(ModelProfile.FAST));
+    dialog.show();
+  }
+
+  private static final String CONTENT_RULES =
+      "SketchLive won't create sexual or nude images, anything that sexualizes or endangers"
+          + " minors, graphic gore, self-harm, hate symbols, or deepfakes of real people."
+          + " Descriptions asking for these are refused.\n\n"
+          + "Only import photos you have the right to use, and don't edit images of real people"
+          + " without their consent.\n\n"
+          + "AI can still make mistakes. If a result is offensive or harmful, tap Report"
+          + " below the image.";
+
+  private void welcome() {
+    new AlertDialog.Builder(this)
+        .setTitle("Welcome to SketchLive")
+        .setMessage(
+            "Draw a few shapes, describe the scene, and your phone paints it. Images are"
+                + " generated on this device and never uploaded.\n\n"
+                + CONTENT_RULES)
+        .setCancelable(false)
+        .setPositiveButton(
+            "I agree",
+            (d, w) -> {
+              getPreferences(0).edit().putBoolean("acceptedContentRules", true).apply();
+              if (!store.ready()) confirmDownload();
+            })
+        .show();
   }
 
   private int dp(float n) {
@@ -124,9 +172,14 @@ public final class MainActivity extends Activity {
     b.setText(label);
     b.setTextSize(12);
     b.setAllCaps(false);
-    b.setTextColor(TEXT);
-    b.setMinWidth(0);
-    b.setMinimumWidth(0);
+    // Dim disabled buttons; a fixed text color made disabled Generate look tappable.
+    b.setTextColor(
+        new android.content.res.ColorStateList(
+            new int[][] {{-android.R.attr.state_enabled}, {}},
+            new int[] {0x66eaf0fa, TEXT}));
+    b.setMinWidth(dp(48));
+    b.setMinimumWidth(dp(48));
+    b.setMinHeight(dp(48));
     b.setPadding(dp(8), 0, dp(8), 0);
     b.setOnClickListener(v -> click.run());
     return b;
@@ -189,6 +242,7 @@ public final class MainActivity extends Activity {
     prompt.setHint("A magical mushroom cottage in a mossy forest…");
     prompt.setBackground(surface(PANEL, 12));
     prompt.setPadding(dp(12), dp(10), dp(12), dp(10));
+    prompt.setMinHeight(dp(48));
     root.addView(prompt);
     mode = new Spinner(this);
     mode.setAdapter(
@@ -239,6 +293,7 @@ public final class MainActivity extends Activity {
     live.setText("Live · update after each stroke");
     live.setTextColor(TEXT);
     live.setTextSize(14);
+    live.setMinHeight(dp(48));
     root.addView(live);
     progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
     progress.setIndeterminate(true);
@@ -268,7 +323,12 @@ public final class MainActivity extends Activity {
     result = new ImageView(this);
     result.setScaleType(ImageView.ScaleType.FIT_CENTER);
     result.setBackgroundColor(PANEL);
-    result.setContentDescription("Generated image");
+    result.setContentDescription("Generated image. Long press to report.");
+    result.setOnLongClickListener(
+        v -> {
+          report();
+          return true;
+        });
     stage.addView(result, new FrameLayout.LayoutParams(-1, -1));
     result.setVisibility(View.GONE);
     root.addView(stage, new LinearLayout.LayoutParams(-1, -2));
@@ -282,7 +342,8 @@ public final class MainActivity extends Activity {
         }) {
       int color = Color.parseColor(hex);
       View swatch = new View(this);
-      swatch.setBackground(surface(color, 24));
+      // 32dp circle inside a 48dp touch target.
+      swatch.setBackground(new android.graphics.drawable.InsetDrawable(surface(color, 24), dp(8)));
       swatch.setContentDescription("Brush color " + hex);
       swatch.setOnClickListener(
           v -> {
@@ -290,8 +351,8 @@ public final class MainActivity extends Activity {
             sketch.eraser = false;
             showResult(false);
           });
-      LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(30), dp(30));
-      p.setMargins(dp(4), dp(10), dp(4), dp(8));
+      LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(48), dp(48));
+      p.setMargins(0, dp(4), 0, dp(4));
       swatches.addView(swatch, p);
     }
     colors.addView(swatches);
@@ -389,6 +450,9 @@ public final class MainActivity extends Activity {
     LinearLayout exports = column();
     exports.addView(button("Save PNG", () -> export(false)));
     exports.addView(button("Share", () -> export(true)));
+    Button report = button("Report", this::report);
+    report.setContentDescription("Report an offensive or harmful result");
+    exports.addView(report);
     output.addView(exports, new LinearLayout.LayoutParams(0, -2, 1));
     root.addView(output);
     label(root, "RECENT RESULTS · STORED ONLY ON THIS PHONE");
@@ -518,10 +582,12 @@ public final class MainActivity extends Activity {
     enhance.setEnabled(ready && !busy && store.profile.supportsEnhance());
     mode.setEnabled(!busy);
     download.setText(
-        "Download "
-            + (store.profile == ModelProfile.FAST ? "Fast" : "Quality")
-            + " model · "
-            + formatBytes(store.downloadBytes));
+        downloading
+            ? "Downloading… Stop pauses, Download resumes"
+            : (partialSize() > 0 ? "Resume " : "Download ")
+                + (store.profile == ModelProfile.FAST ? "Fast" : "Quality")
+                + " model · "
+                + formatBytes(store.downloadBytes));
     modeHint.setText(
         store.profile == ModelProfile.FAST
             ? "256 px · SDXS + sketch guidance. Switch to Quality for Enhance."
@@ -551,12 +617,74 @@ public final class MainActivity extends Activity {
     Toast.makeText(this, value, Toast.LENGTH_SHORT).show();
   }
 
+  /** Total-RAM floors per mode. Android reports a little less than a phone's advertised RAM. */
+  private static long minimumRam(ModelProfile profile) {
+    return profile == ModelProfile.FAST ? 3_500_000_000L : 5_500_000_000L;
+  }
+
+  private long totalRam() {
+    ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
+    getSystemService(ActivityManager.class).getMemoryInfo(info);
+    return info.totalMem;
+  }
+
+  private boolean memoryWarningNeeded() {
+    return totalRam() < minimumRam(store.profile)
+        && !getPreferences(0).getBoolean("ramWarned." + store.profile.name(), false);
+  }
+
+  /**
+   * Android's low-memory killer ends the process without an exception when a model doesn't fit,
+   * so warn before a large download or the first model load instead.
+   */
+  private void checkMemory(Runnable action) {
+    if (!memoryWarningNeeded()) {
+      action.run();
+      return;
+    }
+    boolean fastFits =
+        store.profile == ModelProfile.QUALITY && totalRam() >= minimumRam(ModelProfile.FAST);
+    AlertDialog.Builder dialog =
+        new AlertDialog.Builder(this)
+            .setTitle("This phone may not have enough memory")
+            .setMessage(
+                String.format(
+                    Locale.US,
+                    "This phone has about %.1f GB of RAM. %s mode needs about %.0f GB or more;"
+                        + " with less, Android may close SketchLive while it generates.%s",
+                    totalRam() / 1e9,
+                    store.profile == ModelProfile.FAST ? "Fast" : "Quality",
+                    Math.ceil(minimumRam(store.profile) / 1e9),
+                    fastFits ? "\n\nFast mode needs much less memory." : ""))
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton(
+                "Continue anyway",
+                (d, w) -> {
+                  getPreferences(0)
+                      .edit()
+                      .putBoolean("ramWarned." + store.profile.name(), true)
+                      .apply();
+                  action.run();
+                });
+    if (fastFits) dialog.setNeutralButton("Use Fast", (d, w) -> selectProfile(ModelProfile.FAST));
+    dialog.show();
+  }
+
   private void confirmDownload() {
     if (busy) return;
+    checkMemory(this::showDownloadDialog);
+  }
+
+  private void showDownloadDialog() {
     new AlertDialog.Builder(this)
-        .setTitle("Download the local model")
+        .setTitle(
+            "Download the " + (store.profile == ModelProfile.FAST ? "Fast" : "Quality") + " model")
         .setMessage(
-            "One-time download: "
+            (metered()
+                    ? "You're on a metered connection such as mobile data. Charges may apply;"
+                        + " connect to Wi-Fi to avoid them.\n\n"
+                    : "")
+                + "One-time download: "
                 + formatBytes(store.downloadBytes)
                 + ". Allow at least "
                 + formatBytes(store.downloadBytes * 2 + 128_000_000L)
@@ -581,6 +709,11 @@ public final class MainActivity extends Activity {
         .show();
   }
 
+  private boolean metered() {
+    ConnectivityManager c = getSystemService(ConnectivityManager.class);
+    return c != null && c.isActiveNetworkMetered();
+  }
+
   private void download() {
     if (store.directory.getUsableSpace()
         < Math.max(100_000_000L, store.downloadBytes + 128_000_000L - partialSize())) {
@@ -589,6 +722,7 @@ public final class MainActivity extends Activity {
     }
     busy = true;
     downloading = true;
+    stopRequested = false;
     store.resetCancellation();
     refresh();
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -600,8 +734,10 @@ public final class MainActivity extends Activity {
             message = "Model ready. You can now generate offline.";
           } catch (Exception e) {
             message =
-                e instanceof CancellationException
-                    ? e.getMessage()
+                // Stop disconnects the socket, which surfaces as "Socket closed" rather than a
+                // cancellation.
+                e instanceof CancellationException || stopRequested
+                    ? "Download paused. Tap Resume to continue."
                     : "Download paused: " + e.getMessage();
           }
           String finalMessage = message;
@@ -638,6 +774,18 @@ public final class MainActivity extends Activity {
       if (!automatic) toast("Describe what you want to draw");
       return;
     }
+    ContentSafety.Verdict verdict = ContentSafety.check(description, reportedPrompts);
+    if (verdict != null) {
+      live.setChecked(false);
+      setStatus(verdict.message());
+      if (!automatic)
+        new AlertDialog.Builder(this)
+            .setTitle("Can't create this")
+            .setMessage(verdict.message() + "\n\n" + CONTENT_RULES)
+            .setPositiveButton("OK", null)
+            .show();
+      return;
+    }
     long seed;
     try {
       seed = Long.parseLong(seedInput.getText().toString());
@@ -646,6 +794,13 @@ public final class MainActivity extends Activity {
       toast("Seed must be between 0 and 2147483647");
       return;
     }
+    if (engine == null && memoryWarningNeeded()) {
+      live.setChecked(false);
+      if (!automatic) checkMemory(() -> generate(enhanced, false));
+      return;
+    }
+    // Synchronous so the marker survives a low-memory kill; see onCreate.
+    getPreferences(0).edit().putString("inferenceRunning", profile.name()).commit();
     final long usedSeed = seed, version = revision;
     final float amount = (creativity.getProgress() + 20) / 100f;
     int selected = style.getSelectedItemPosition();
@@ -701,11 +856,11 @@ public final class MainActivity extends Activity {
             failure = "This device could not load the inference runtime: " + e.getMessage();
             releaseEngine();
           } catch (Exception e) {
-            failure =
-                (e instanceof CancellationException || !foreground)
-                    ? "Generation stopped"
-                    : "Generation failed: " + e.getMessage();
-            releaseEngine();
+            boolean stopped = e instanceof CancellationException || stopRequested || !foreground;
+            failure = stopped ? "Generation stopped" : "Generation failed: " + e.getMessage();
+            // A stopped run leaves the sessions usable; keep them so the next run starts fast,
+            // but free the memory when the app is leaving the foreground.
+            if (!stopped || !foreground) releaseEngine();
           } finally {
             if (!input.isRecycled()) input.recycle();
           }
@@ -719,8 +874,10 @@ public final class MainActivity extends Activity {
                   return;
                 }
                 busy = false;
+                getPreferences(0).edit().remove("inferenceRunning").apply();
                 getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 if (finished != null) {
+                  promptFor.put(finished, description);
                   addResult(finished);
                   setStatus(
                       String.format(
@@ -790,8 +947,14 @@ public final class MainActivity extends Activity {
     history.add(0, b);
     if (history.size() > 8) {
       Bitmap old = history.remove(history.size() - 1);
+      promptFor.remove(old);
       if (old != latest) old.recycle();
     }
+    renderHistory();
+    worker.execute(() -> saveImage(b, new File(getFilesDir(), "result.png")));
+  }
+
+  private void renderHistory() {
     historyRow.removeAllViews();
     for (Bitmap item : history) {
       ImageView image = new ImageView(this);
@@ -808,7 +971,113 @@ public final class MainActivity extends Activity {
             showResult(true);
           });
     }
-    worker.execute(() -> saveImage(b, new File(getFilesDir(), "result.png")));
+  }
+
+  /**
+   * In-app reporting required by Play's AI-generated content policy. The report is completed
+   * without leaving the app: the image is removed and the prompt is refused from then on. Sending
+   * the details to the developer is an optional extra step.
+   */
+  private void report() {
+    if (latest == null) {
+      toast("Generate an image first");
+      return;
+    }
+    String[] reasons = {
+      "Sexual or nude content",
+      "Involves a minor",
+      "Violence or gore",
+      "Hate or harassment",
+      "Real person or deepfake",
+      "Other harmful content"
+    };
+    int[] choice = {-1};
+    CheckBox send = new CheckBox(this);
+    send.setText("Also email the details to the developer (prompt and settings, no image)");
+    send.setChecked(true);
+    send.setPadding(dp(8), dp(8), dp(8), dp(8));
+    boolean canSend = !BuildConfig.REPORT_EMAIL.isEmpty();
+    AlertDialog dialog =
+        new AlertDialog.Builder(this)
+            .setTitle("Report this result")
+            .setSingleChoiceItems(reasons, -1, null)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Report", null)
+            .create();
+    if (canSend) dialog.setView(send);
+    dialog.setOnShowListener(
+        d -> {
+          Button submit = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+          submit.setEnabled(false);
+          dialog
+              .getListView()
+              .setOnItemClickListener(
+                  (parent, view, position, id) -> {
+                    choice[0] = position;
+                    submit.setEnabled(true);
+                  });
+          submit.setOnClickListener(
+              v -> {
+                dialog.dismiss();
+                submitReport(reasons[choice[0]], canSend && send.isChecked());
+              });
+        });
+    dialog.show();
+  }
+
+  private void submitReport(String reason, boolean email) {
+    Bitmap item = latest;
+    String reportedPrompt = promptFor.getOrDefault(item, prompt.getText().toString().trim());
+    reportedPrompts.add(ContentSafety.normalize(reportedPrompt));
+    getPreferences(0)
+        .edit()
+        .putStringSet("reportedPrompts", new HashSet<>(reportedPrompts))
+        .apply();
+    String details =
+        String.format(
+            Locale.US,
+            "Reason: %s%nPrompt: %s%nStyle: %s%nMode: %s%nSeed: %s%nSetting: %.2f%nApp: %s (%d)%n",
+            reason,
+            reportedPrompt,
+            currentStyle,
+            store.profile.label,
+            seedInput.getText(),
+            (creativity.getProgress() + 20) / 100f,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE);
+    history.remove(item);
+    promptFor.remove(item);
+    latest = history.isEmpty() ? null : history.get(0);
+    Bitmap next = latest;
+    worker.execute(
+        () -> {
+          try (Writer out =
+              new OutputStreamWriter(
+                  new FileOutputStream(new File(getFilesDir(), "reports.txt"), true),
+                  StandardCharsets.UTF_8)) {
+            out.write(new Date() + "\n" + details + "\n");
+          } catch (IOException ignored) {
+          }
+          File saved = new File(getFilesDir(), "result.png");
+          if (next != null) saveImage(next, saved);
+          else saved.delete();
+        });
+    result.setImageBitmap(latest);
+    thumbnail.setImageBitmap(latest);
+    renderHistory();
+    showResult(false);
+    setStatus("Reported. The image was removed and this description is now blocked.");
+    if (email) {
+      Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"));
+      intent.putExtra(Intent.EXTRA_EMAIL, new String[] {BuildConfig.REPORT_EMAIL});
+      intent.putExtra(Intent.EXTRA_SUBJECT, "SketchLive content report: " + reason);
+      intent.putExtra(Intent.EXTRA_TEXT, details);
+      try {
+        startActivity(intent);
+      } catch (ActivityNotFoundException e) {
+        toast("No email app found. Your report was still saved on this phone.");
+      }
+    } else toast("Thanks. Your report was saved.");
   }
 
   private void export(boolean share) {
@@ -907,7 +1176,24 @@ public final class MainActivity extends Activity {
                 + " Uninstalling removes it. Sketch and latest result are restored when you reopen"
                 + " the app.")
         .setPositiveButton("OK", null)
-        .setNeutralButton("Model licenses", (d, w) -> showModelLicenses())
+        .setNegativeButton(
+            "Privacy",
+            (d, w) ->
+                new AlertDialog.Builder(this)
+                    .setTitle("Privacy and content rules")
+                    .setMessage(
+                        "SketchLive collects no personal data, has no analytics or ads, and never"
+                            + " uploads sketches, prompts, or images. Reports stay on this phone"
+                            + " unless you choose to email them.\n\n"
+                            + CONTENT_RULES)
+                    .setPositiveButton("Close", null)
+                    .setNeutralButton(
+                        "Full policy",
+                        (d2, w2) ->
+                            startActivity(
+                                new Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.PRIVACY_URL))))
+                    .show())
+        .setNeutralButton("Licenses", (d, w) -> showModelLicenses())
         .show();
   }
 
@@ -962,6 +1248,7 @@ public final class MainActivity extends Activity {
 
   private void restore() {
     android.content.SharedPreferences prefs = getPreferences(0);
+    reportedPrompts.addAll(prefs.getStringSet("reportedPrompts", Collections.emptySet()));
     prompt.setText(
         prefs.getString(
             "prompt", "a magical red mushroom cottage, glowing windows, mossy forest, fireflies"));
@@ -1008,6 +1295,7 @@ public final class MainActivity extends Activity {
     }
     getPreferences(0)
         .edit()
+        .remove("inferenceRunning")
         .putString("prompt", prompt.getText().toString())
         .putString("seed", seedInput.getText().toString())
         .putInt("creativity." + store.profile.name(), creativity.getProgress())

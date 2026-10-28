@@ -97,12 +97,6 @@ final class SketchView extends View {
     return bitmap.copy(Bitmap.Config.ARGB_8888, false);
   }
 
-  void save(File file) throws IOException {
-    try (FileOutputStream out = new FileOutputStream(file)) {
-      bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
-    }
-  }
-
   void restore(File file) {
     Bitmap b = BitmapFactory.decodeFile(file.toString());
     if (b != null) {
