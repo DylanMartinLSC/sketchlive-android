@@ -69,7 +69,7 @@ final class ModelStore {
   }
 
   private void check() {
-    if (cancelled) throw new CancellationException("Download paused; tap Download to resume");
+    if (cancelled) throw new CancellationException("Download paused; tap Resume to continue");
   }
 
   void download(Consumer<String> progress) throws Exception {
@@ -140,10 +140,10 @@ final class ModelStore {
       check();
       progress.accept("Verifying " + name + "…");
       if (partial.length() != size)
-        throw new IOException("Incomplete download; tap Download to resume");
+        throw new IOException("Incomplete download; tap Resume to continue");
       if (!hash(partial).equals(item.get("sha256").getAsString())) {
         if (!partial.delete()) throw new IOException("Cannot discard damaged model");
-        throw new IOException("Model checksum mismatch; tap Download to retry");
+        throw new IOException("Model checksum mismatch; tap Resume to retry");
       }
       if (!partial.renameTo(destination)) throw new IOException("Cannot install " + name);
       complete += size;

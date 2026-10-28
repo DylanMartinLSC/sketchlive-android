@@ -79,6 +79,17 @@ Actual emulator screenshots: drawing → Generate → Result → Enhance. Playba
 
 After setup, generation works in airplane mode. The app never sends sketches, prompts, or generated images to a server. The INTERNET permission is for model-file downloads. Model cards open in your browser only when you request them.
 
+## Content safety
+
+SketchLive follows Google Play's AI-generated content policy:
+
+- **Prompt safeguards.** Descriptions asking for sexual or nude content, anything that sexualizes or endangers minors, sexual violence, graphic gore, self-harm, hate symbols, or deepfakes are refused before inference. The models have no built-in safety checker, so the filter is conservative. It also catches common obfuscations such as `n.u.d.e` or `s3xy`. See [`ContentSafety`](core/src/main/java/dev/sketchlive/core/ContentSafety.java).
+- **In-app reporting.** Tap **Report** under the result, or long-press the image. Reporting removes the image and blocks that description on the phone. You can also email the details (no image) to the developer.
+- **First-run rules.** The content rules are shown and accepted before the first download.
+- **Memory checks.** Phones below about 4 GB (Fast) or 6 GB (Quality) of RAM get a warning before downloading. If Android closes the app mid-generation, the next launch explains why and offers Fast.
+
+[Privacy policy](PRIVACY.md) · [Play release checklist](RELEASING.md)
+
 ## What to expect
 
 - **Fast: 256 × 256. Quality: 384 × 384.** Both decode with tiny TAESD. Quality encodes the color sketch; Fast conditions on sketch outlines. Enhance is available only in Quality and still uses TAESD, rather than the desktop app's full VAE.
@@ -122,6 +133,20 @@ Without the corresponding `modelDir` / `fastModelDir`, unit tests run and real-m
 - Six JVM tests passed with both real model packs: SD1/SD2 tokenization and padding, scheduler math, sketch preprocessing, deterministic Fast inference, input-dependent conditioning, Quality preview/Enhance, and rejection of unsupported Fast enhancement.
 - Android 15 x86_64 emulator tests exercised a resumed HTTPS model download and SHA-256 verification, drawing/fill/undo/redo, actual image generation through the Activity with airplane mode enabled and Wi-Fi disabled, Sketch/Result switching, and successful PNG export to MediaStore.
 - Fast-mode Android tests also passed independent mode switching, one-step inference, Stop/restart, guidance persistence, and resumed GitHub model download/checksum verification. All three Fast gallery examples were generated through the actual Android Activity in airplane mode.
+- v0.3.0 (targetSdk 36) was tested on an Android 16 x86_64 emulator with 8 GB RAM:
+  - real in-app Fast download with pause and resume
+  - Fast generation (4.4 s first run); Quality Generate (7.8 s) and Enhance (5.4 s), peaking at about 1.8 GB of process memory
+  - blocked prompts, the report flow, report persistence across restarts, rotation, and Save PNG
+  - every visible touch target is at least 48 dp
+- On a 2 GB Android 15 emulator, Android's low-memory killer ends the process during Quality inference. The app now warns before this and explains it afterwards.
+- In the installed release build (Play-style splits), these were tested:
+  - a full in-app Fast download
+  - offline generation in airplane mode (1.6 s first run, 0.8 s warm)
+  - Live updates while drawing
+  - Stop mid-inference, which shows "Generation stopped" and keeps the model loaded for a 1.0 s restart
+  - pausing a download
+  - an upgrade install that keeps downloaded models
+- The signed release App Bundle was built and installed through `bundletool` splits. Estimated Play download is about 10.7 MB on arm64, compared with the 59 MB universal APK. Native libraries are 16 KB page-aligned.
 - ARM64 native libraries are included in the APK. **Physical ARM Android phone speed, memory use, and thermal behavior have not been measured.** The emulator runs on a desktop CPU and does not predict phone frame rates.
 
 The optional Android integration tests in `app/src/androidTest` expect the verified 384 px model pack in the test app's `no_backup/sd-turbo-v1` directory and the integration input at `files/fixture.png`. A verified pack has the `verified-30015d1ff375a67d2ade66f9a43339adf5cd5639` marker written by the downloader. Fast tests additionally expect the verified pack in `no_backup/sdxs-v1` and `files/fixture-robot.png`; the marker revision comes from `app/src/main/assets/sdxs-manifest.json`. Tests requiring models explicitly skip when setup is incomplete. Run the network download test online; run offline generation in airplane mode after setup. Gradle's connected-test cleanup may uninstall the target and remove its private models, so developers testing multiple stages should install the test APK and use `adb shell am instrument` directly to preserve setup.

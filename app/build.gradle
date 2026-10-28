@@ -1,20 +1,59 @@
 plugins { id 'com.android.application' }
+
+// Release signing lives outside the repo: keystore.properties (gitignored) or the file named by
+// SKETCHLIVE_KEYSTORE_PROPERTIES. Keys: storeFile, storePassword, keyAlias, keyPassword.
+def keystoreFile = file(System.getenv('SKETCHLIVE_KEYSTORE_PROPERTIES') ?: rootProject.file('keystore.properties'))
+def keystore = new Properties()
+if (keystoreFile.exists()) keystoreFile.withInputStream { keystore.load(it) }
+def reportEmail = (findProperty('sketchlive.reportEmail') ?: '').toString().trim()
+def privacyUrl = (findProperty('sketchlive.privacyUrl') ?: 'https://github.com/DylanMartinLSC/sketchlive-android/blob/main/PRIVACY.md').toString()
+
 android {
     namespace 'dev.sketchlive.android'
-    compileSdk 35
+    compileSdk 36
     defaultConfig {
         applicationId 'dev.sketchlive.android'
         minSdk 29
-        targetSdk 35
-        versionCode 2
-        versionName '0.2.0'
+        targetSdk 36
+        versionCode 3
+        versionName '0.3.0'
         ndk { abiFilters 'arm64-v8a', 'x86_64' }
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        buildConfigField 'String', 'REPORT_EMAIL', "\"${reportEmail}\""
+        buildConfigField 'String', 'PRIVACY_URL', "\"${privacyUrl}\""
     }
+    buildFeatures { buildConfig true }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     packaging { jniLibs { useLegacyPackaging = false } }
-    buildTypes { release { minifyEnabled false } }
+    signingConfigs {
+        if (keystore.getProperty('storeFile')) {
+            release {
+                storeFile file(keystore.getProperty('storeFile'))
+                storePassword keystore.getProperty('storePassword')
+                keyAlias keystore.getProperty('keyAlias')
+                keyPassword keystore.getProperty('keyPassword')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (keystore.getProperty('storeFile')) signingConfig signingConfigs.release
+        }
+    }
+    // Play wants per-ABI and per-density splits; keep both ABIs so emulators and phones work.
+    bundle { abi { enableSplit true } }
+    lint { checkReleaseBuilds true; abortOnError true }
 }
+
+// Play's AI-generated content policy requires reports to reach the developer.
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.project == project && it.name ==~ /(bundle|assemble|package)Release/ }) {
+        if (!reportEmail) throw new GradleException('Set sketchlive.reportEmail in ~/.gradle/gradle.properties or with -Psketchlive.reportEmail=... before building a release.')
+        if (!keystore.getProperty('storeFile')) throw new GradleException("Release signing is not configured: create ${keystoreFile} (see RELEASING.md).")
+    }
+}
+
 dependencies {
     implementation project(':core')
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.24.3'
