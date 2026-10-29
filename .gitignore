@@ -6,3 +6,11 @@ local.properties
 *.apk
 *.apk.sha256
 keystore.properties
+
+# Portable build outputs
+build/
+dist/
+release/
+*.spec
+*.egg-info/
+.demo-recording/

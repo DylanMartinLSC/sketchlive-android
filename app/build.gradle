@@ -6,6 +6,8 @@ def keystoreFile = file(System.getenv('SKETCHLIVE_KEYSTORE_PROPERTIES') ?: rootP
 def keystore = new Properties()
 if (keystoreFile.exists()) keystoreFile.withInputStream { keystore.load(it) }
 def reportEmail = (findProperty('sketchlive.reportEmail') ?: '').toString().trim()
+// Explicit GitHub sideload preview only; Play bundles retain the production guards.
+def sideloadPreview = (findProperty('sketchlive.sideloadPreview') ?: 'false').toBoolean()
 def privacyUrl = (findProperty('sketchlive.privacyUrl') ?: 'https://github.com/DylanMartinLSC/sketchlive-android/blob/main/PRIVACY.md').toString()
 
 android {
@@ -39,6 +41,7 @@ android {
         release {
             minifyEnabled false
             if (keystore.getProperty('storeFile')) signingConfig signingConfigs.release
+            else if (sideloadPreview) signingConfig signingConfigs.debug
         }
     }
     // Play wants per-ABI and per-density splits; keep both ABIs so emulators and phones work.
@@ -49,8 +52,9 @@ android {
 // Play's AI-generated content policy requires reports to reach the developer.
 gradle.taskGraph.whenReady { graph ->
     if (graph.allTasks.any { it.project == project && it.name ==~ /(bundle|assemble|package)Release/ }) {
-        if (!reportEmail) throw new GradleException('Set sketchlive.reportEmail in ~/.gradle/gradle.properties or with -Psketchlive.reportEmail=... before building a release.')
-        if (!keystore.getProperty('storeFile')) throw new GradleException("Release signing is not configured: create ${keystoreFile} (see RELEASING.md).")
+        def playBundle = graph.allTasks.any { it.project == project && it.name == 'bundleRelease' }
+        if (!reportEmail && (!sideloadPreview || playBundle)) throw new GradleException('Set sketchlive.reportEmail in ~/.gradle/gradle.properties or with -Psketchlive.reportEmail=... before building a release.')
+        if (!keystore.getProperty('storeFile') && (!sideloadPreview || playBundle)) throw new GradleException("Release signing is not configured: create ${keystoreFile} (see RELEASING.md).")
     }
 }
 
