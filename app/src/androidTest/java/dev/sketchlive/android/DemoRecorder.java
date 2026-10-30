@@ -129,7 +129,10 @@ public class DemoRecorder {
             InstrumentationRegistry.getInstrumentation()
                 .getTargetContext()
                 .getExternalFilesDir(null),
-            "demos/" + (fast ? "fast-" : "") + name);
+            "demos/"
+                + InstrumentationRegistry.getArguments().getString("recordingPrefix", "")
+                + (fast ? "fast-" : "")
+                + name);
     assertTrue(directory.exists() || directory.mkdirs());
     String prompt;
     switch (name) {
@@ -198,7 +201,7 @@ public class DemoRecorder {
             } catch (Exception e) {
               throw new AssertionError(e);
             }
-            ((Button) field(a, "drawTab")).performClick();
+            if (!fast) ((Button) field(a, "drawTab")).performClick();
           });
       capture(3);
       if (!fast) {

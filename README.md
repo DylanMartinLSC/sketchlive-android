@@ -1,5 +1,16 @@
 # SketchLive Android
 
+Draw on your phone and generate images locally, offline after model setup.
+
+![SketchLive Android demo](media/demo.gif)
+
+<sub>Actual Android emulator with CPU inference; condensed capture, not phone performance. [Recording details](media/DEMO.md).</sub>
+
+[![Download APK](https://img.shields.io/badge/Download_APK-download-238636)](https://github.com/DylanMartinLSC/sketchlive-android/releases/latest/download/sketchlive-android.apk)
+
+GitHub APKs are **release builds signed with a debug key**, for sideload testing. They are not Play Store builds. Models download in the app. The preview saves content reports locally; developer email reporting is not configured. Changing signing keys can require uninstalling the previous app.
+
+
 **Draw a few shapes. Describe the scene. Let your phone paint the details.**
 
 Free, open-source sketch-to-image diffusion that runs locally on Android. No desktop server, account, subscription, paid API, or image uploads. Download the model once, then generate in airplane mode.
